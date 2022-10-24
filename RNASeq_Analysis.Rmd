@@ -1,0 +1,790 @@
+---
+title: "Analysis"
+author: |
+  | Abu Saleh Mosa Faisal
+  | Biostatistical Analyst
+  |
+  | Supervisor: Mohammad Alfrad Nobel Bhuiyan, PhD
+  | Assistant Professor, Internal Medicine Department
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, include=FALSE}
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library("ggpubr")
+library(corrplot)
+library(tidyverse)
+library(Hmisc)
+library(ggcorrplot)
+library(factoextra)
+library(ComplexHeatmap)
+```
+
+```{r}
+df = read_excel('TCGA-PRAD Illumina Hiseq gene expression.xlsx')
+df_clinical = read_excel('TCGA PRAD clinical data.xlsx')
+df_survival = read_excel("TCGA-PRAD survival data.xlsx")
+```
+
+
+
+```{r}
+head(df)
+df_1= df%>% remove_rownames %>% column_to_rownames(var="sample")
+head(df_1)
+df_2 <- as.data.frame(t(df_1))
+head(df_2)
+
+data2 <- df_2                                         
+data2 <- tibble::rownames_to_column(data2, "sampleID") # Apply rownames_to_column
+head(data2)  
+
+data2$sampleID = as.character(data2$sampleID)
+
+```
+
+```{r}
+head(df_clinical)
+head(df_survival)
+names(df_survival)[names(df_survival) == 'sample'] <- 'sampleID'
+head(df_survival)
+
+df_clinical$sampleID = as.character(df_clinical$sampleID)
+df_survival$sampleID = as.character(df_survival$sampleID)
+
+```
+
+
+```{r, echo=FALSE}
+## Joining the tables by sampleID
+
+df_combined= data2 %>%  full_join(df_clinical, by = "sampleID") %>%
+             full_join(df_survival, by ="sampleID")
+
+
+
+
+```
+
+
+
+```{r}
+## Dividing by case and control of data
+df_combined <- df_combined %>%
+  add_column(CaseControl = 
+               if_else(.$sample_type == "Primary Tumor", "Case", "Control"),
+             .after="SELS")
+
+
+
+```
+
+
+### Keeping only cases
+
+
+```{r, echo=FALSE}
+##Subsetting data set with all variables
+
+data.GS6 = subset(df_combined, gleason_score == 6 & CaseControl == "Case")
+
+data.GS7 = subset(df_combined, gleason_score == 7 & CaseControl == "Case")
+
+data.GS8 = subset(df_combined, gleason_score == 8 & CaseControl == "Case")
+
+data.GS9 = subset(df_combined, gleason_score == 9 & CaseControl == "Case")
+
+data.GS10 = subset(df_combined, gleason_score == 10 & CaseControl == "Case")
+data.GS10
+
+data.GS10_c = subset(df_combined, gleason_score == 10 & CaseControl == "Control")
+data.GS10_c
+data.GS910= rbind(data.GS9, data.GS10)
+
+```
+
+
+```{r}
+## dataset only with genes
+
+gene.GS7 =data.GS7[,1:20531]
+gene.GS8 = data.GS8[,1:20531]
+gene.GS910=data.GS910[,1:20531]
+
+```
+
+
+```{r}
+## Changing row names
+
+gene_GS7 <- gene.GS7[,-1]
+rownames(gene_GS7) <- gene.GS7[,1]
+gene_GS7
+```
+
+##  PCA Data Preparation
+
+
+```{r}
+##Constant column
+
+#sapply(1:ncol(gene_GS7), function(x){
+              # length = unique(gene_GS7[, x]) %>% length
+             #}) %>% table
+
+
+#Missing value
+
+is.na(gene_GS7) %>% sum
+
+
+gene_GS7_cleaned= na.omit(gene_GS7)
+
+
+
+
+#gene_GS7[ , which(apply(gene_GS7, 2, var) != 0)]
+
+```
+
+```{r}
+
+which(apply(gene_GS7_cleaned, 2, var)==0)
+
+
+gene_GS7_cleaned[ , which(apply(gene_GS7_cleaned, 2, var) != 0)]
+
+#res.pca <- prcomp(gene_GS7_cleaned, scale = TRUE)
+
+```
+
+```{r}
+## Standardization of the data
+
+# creating Standardization function
+standardize = function(x){
+  z <- (x - mean(x)) / sd(x)
+  return( z)
+}
+  
+# apply your function to the dataset
+gene_GS7_std<-
+  apply(gene_GS7_cleaned, 2, standardize)
+
+
+
+gene_GS7_sc=gene_GS7_std[ , apply(gene_GS7_std, 2, function(x) !any(is.na(x)))]
+
+
+
+
+```
+
+
+## PCA
+
+
+```{r}
+res.pca <- prcomp(gene_GS7_sc, scale = FALSE)
+
+```
+
+```{r}
+
+#Visualize eigenvalues (scree plot). Show the percentage of variances explained by each principal component.
+
+
+fviz_eig(res.pca)
+
+```
+
+```{r}
+
+#Graph of individuals. Individuals with a similar profile are grouped together.
+
+fviz_pca_ind(res.pca,
+             col.ind = "cos2", # Color by the quality of representation
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+
+
+```
+
+
+
+
+```{r}
+
+# Graph of variables. Positive correlated variables point to the same side of the plot. Negative correlated variables point to opposite sides of the graph.
+
+
+fviz_pca_var(res.pca,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+
+
+
+```
+
+
+```{r}
+
+#Biplot of individuals and variables
+
+fviz_pca_biplot(res.pca, repel = TRUE,
+                col.var = "#2E9FDF", # Variables color
+                col.ind = "#696969"  # Individuals color
+                )
+
+
+
+```
+
+
+```{r}
+
+# Eigenvalues
+eig.val <- get_eigenvalue(res.pca)
+eig.val
+  
+# Results for Variables
+res.var <- get_pca_var(res.pca)
+res.var$coord          # Coordinates
+res.var$contrib        # Contributions to the PCs
+res.var$cos2           # Quality of representation 
+# Results for individuals
+#res.ind <- get_pca_ind(res.pca)
+#res.ind$coord          # Coordinates
+#res.ind$contrib        # Contributions to the PCs
+#res.ind$cos2           # Quality of representation 
+
+
+```
+
+```{r}
+#res.pca$x
+
+plot(res.pca$x[,1], res.pca$x[,2])
+```
+
+
+
+```{r}
+
+
+pr_var=res.pca$sdev^2
+prop_varex <- pr_var/sum(pr_var)
+plot(prop_varex, xlab = "Principal Component",
+             ylab = "Proportion of Variance Explained",
+             type = "b")
+
+
+
+
+plot(cumsum(prop_varex), xlab = "Principal Component",
+              ylab = "Cumulative Proportion of Variance Explained",
+              type = "b", xlim=c(0,300))
+
+```
+
+
+
+```{r}
+
+#Variable selection
+
+loading_score = res.pca$rotation[,1]
+
+gene_score= abs(loading_score)
+
+gene_score_ranked = sort(gene_score, decreasing = TRUE)
+
+top_250_genes = names(gene_score_ranked[1:10000])
+
+top_250_genes
+
+res.pca$rotation[top_250_genes,1]
+
+
+
+```
+
+
+
+
+
+
+## Hierarchical Clustering
+
+
+```{r}
+
+
+#top_10_genes =c("C5orf41", "PIK3CA", "NAA10" , "ASPSCR1", "AURKAIP1",  "MRPS34", "DPP8",  "MRPL23", "NDUFB11", "EDF1" )
+
+gene_GS7_sc_150 = na.omit(gene_GS7_sc[,top_150_genes])
+
+is.na(gene_GS7_sc_150) %>% table()
+
+dim(gene_GS7_sc_150)
+
+Heatmap(gene_GS7_sc_150, show_row_names = FALSE)
+```
+
+
+
+
+
+
+
+
+### For GS 8
+
+
+
+
+```{r}
+## Changing row names
+
+gene_GS8 <- gene.GS8[,-1]
+rownames(gene_GS8) <- gene.GS8[,1]
+gene_GS8
+```
+
+
+
+
+## PCA Data Preparation
+
+
+
+```{r}
+is.na(gene_GS8) %>% sum
+
+
+gene_GS8_cleaned= na.omit(gene_GS8)
+
+
+```
+
+
+
+
+##  PCA Fitting
+
+
+```{r}
+res.pca <- prcomp(gene_GS8_cleaned, scale = FALSE)
+
+```
+
+```{r}
+#Visualize eigenvalues (scree plot). Show the percentage of variances explained by each principal component.
+
+
+fviz_eig(res.pca)
+
+```
+
+```{r}
+
+#Graph of individuals. Individuals with a similar profile are grouped together.
+
+fviz_pca_ind(res.pca,
+             col.ind = "cos2", # Color by the quality of representation
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+
+
+```
+
+
+
+
+```{r}
+
+# Graph of variables. Positive correlated variables point to the same side of the plot. Negative correlated variables point to opposite sides of the graph.
+
+
+fviz_pca_var(res.pca,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+
+
+
+```
+
+
+```{r}
+
+#Biplot of individuals and variables
+
+fviz_pca_biplot(res.pca, repel = TRUE,
+                col.var = "#2E9FDF", # Variables color
+                col.ind = "#696969"  # Individuals color
+                )
+
+
+
+```
+
+
+```{r}
+# Eigenvalues
+eig.val <- get_eigenvalue(res.pca)
+eig.val
+  
+# Results for Variables
+res.var <- get_pca_var(res.pca)
+res.var$coord          # Coordinates
+res.var$contrib        # Contributions to the PCs
+res.var$cos2           # Quality of representation 
+# Results for individuals
+#res.ind <- get_pca_ind(res.pca)
+#res.ind$coord          # Coordinates
+#res.ind$contrib        # Contributions to the PCs
+#res.ind$cos2           # Quality of representation 
+
+
+```
+
+```{r}
+plot(res.pca$x[,1], res.pca$x[,2])
+```
+
+```{r}
+#pca.data = data.frame(Sample =rownames(res.pca$x), X= res.pca$x[,1], Y= res.pca$x[,2])
+#pca.var=res.pca$sdev^2
+#pca.var.per= round(pca.var/sum(pca.var)*100,1)
+
+
+#ggplot(data=pca.data, aes(x=X, y=Y, label= Sample))+
+ # geom_text() +
+  #xlab(paste("PC1 - ", pca.var.per[1], "%", sep=""))+
+  #ylab(paste("PC2 - ", pca.var.per[2], "%", sep="")) +
+  #theme_bw() +
+  #ggtitle("PCA Graph")
+
+
+pr_var=res.pca$sdev^2
+prop_varex <- pr_var/sum(pr_var)
+plot(prop_varex, xlab = "Principal Component",
+             ylab = "Proportion of Variance Explained",
+             type = "b")
+
+
+
+
+plot(cumsum(prop_varex), xlab = "Principal Component",
+              ylab = "Cumulative Proportion of Variance Explained",
+              type = "b", xlim=c(0,100))
+
+```
+#Variable selection
+
+
+```{r}
+loading_score = res.pca$rotation[,1]
+
+gene_score= abs(loading_score)
+
+gene_score_ranked = sort(gene_score, decreasing = TRUE)
+
+top_60_genes = names(gene_score_ranked[1:1000])
+
+top_60_genes
+
+res.pca$rotation[top_60_genes,1]
+
+
+
+
+```
+
+
+```{r}
+pairsplot(p)
+```
+
+
+
+
+## Hierarchical Clustering
+
+```{r}
+library(ComplexHeatmap)
+
+#top_10_genes =c("C5orf41", "PIK3CA", "NAA10" , "ASPSCR1", "AURKAIP1",  "MRPS34", "DPP8",  "MRPL23", "NDUFB11", "EDF1" )
+
+gene_GS8_sc_60 = na.omit(gene_GS8_sc[,top_60_genes])
+
+is.na(gene_GS8_sc_60) %>% table()
+
+dim(gene_GS8_sc_60)
+
+Heatmap(gene_GS8_sc_60, show_row_names = FALSE)
+```
+
+
+
+
+
+
+
+
+### For GS 9 ans 10
+
+
+
+
+```{r}
+## Changing row names
+
+gene_GS910 <- gene.GS910[,-1]
+rownames(gene_GS910) <- gene.GS910[,1]
+```
+
+## PCA Data Preparation
+
+
+```{r}
+
+#Missing value
+
+is.na(gene_GS910) %>% sum
+
+
+gene_GS910_cleaned= na.omit(gene_GS910)
+
+
+
+```
+
+```{r}
+
+
+
+gene_GS910_cleaned[ , which(apply(gene_GS910_cleaned, 2, var) != 0)]
+
+
+```
+
+```{r}
+## Standardization of the data
+
+# creating Standardization function
+standardize = function(x){
+  z <- (x - mean(x)) / sd(x)
+  return( z)
+}
+  
+# apply your function to the dataset
+gene_GS910_std<-
+  apply(gene_GS910_cleaned, 2, standardize)
+
+
+
+gene_GS910_sc=gene_GS910_std[ , apply(gene_GS910_std, 2, function(x) !any(is.na(x)))]
+
+
+
+```
+
+
+##  PCA Fitting
+
+
+```{r}
+res.pca <- prcomp(gene_GS910_sc, scale = FALSE)
+
+```
+
+```{r}
+
+#Visualize eigenvalues (scree plot). Show the percentage of variances explained by each principal component.
+
+
+fviz_eig(res.pca)
+
+```
+
+```{r}
+
+#Graph of individuals. Individuals with a similar profile are grouped together.
+
+fviz_pca_ind(res.pca,
+             col.ind = "cos2", # Color by the quality of representation
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+
+
+```
+
+
+
+
+```{r}
+
+# Graph of variables. Positive correlated variables point to the same side of the plot. Negative correlated variables point to opposite sides of the graph.
+
+
+fviz_pca_var(res.pca,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+
+
+
+```
+
+
+```{r}
+
+#Biplot of individuals and variables
+
+fviz_pca_biplot(res.pca, repel = TRUE,
+                col.var = "#2E9FDF", # Variables color
+                col.ind = "#696969"  # Individuals color
+                )
+
+
+
+```
+
+
+```{r}
+# Eigenvalues
+eig.val <- get_eigenvalue(res.pca)
+eig.val
+  
+# Results for Variables
+res.var <- get_pca_var(res.pca)
+res.var$coord          # Coordinates
+res.var$contrib        # Contributions to the PCs
+res.var$cos2           # Quality of representation 
+# Results for individuals
+#res.ind <- get_pca_ind(res.pca)
+#res.ind$coord          # Coordinates
+#res.ind$contrib        # Contributions to the PCs
+#res.ind$cos2           # Quality of representation 
+
+
+```
+
+```{r}
+#res.pca$x
+
+plot(res.pca$x[,1], res.pca$x[,2])
+```
+
+```{r}
+#pca.data = data.frame(Sample =rownames(res.pca$x), X= res.pca$x[,1], Y= res.pca$x[,2])
+#pca.var=res.pca$sdev^2
+#pca.var.per= round(pca.var/sum(pca.var)*100,1)
+
+
+#ggplot(data=pca.data, aes(x=X, y=Y, label= Sample))+
+ # geom_text() +
+  #xlab(paste("PC1 - ", pca.var.per[1], "%", sep=""))+
+  #ylab(paste("PC2 - ", pca.var.per[2], "%", sep="")) +
+  #theme_bw() +
+  #ggtitle("PCA Graph")
+
+
+pr_var=res.pca$sdev^2
+prop_varex <- pr_var/sum(pr_var)
+plot(prop_varex, xlab = "Principal Component",
+             ylab = "Proportion of Variance Explained",
+             type = "b")
+
+
+
+
+plot(cumsum(prop_varex), xlab = "Principal Component",
+              ylab = "Cumulative Proportion of Variance Explained",
+              type = "b", xlim=c(0,200))
+
+```
+
+
+
+```{r}
+
+#Variable selection
+
+loading_score = res.pca$rotation[,1]
+
+gene_score= abs(loading_score)
+
+gene_score_ranked = sort(gene_score, decreasing = TRUE)
+
+top_120_genes = names(gene_score_ranked[1:1000])
+
+top_120_genes
+
+res.pca$rotation[top_120_genes,1]
+
+
+
+
+```
+
+
+
+
+
+
+##  Hierarchical Clustering
+
+
+```{r}
+#top_10_genes =c("C5orf41", "PIK3CA", "NAA10" , "ASPSCR1", "AURKAIP1",  "MRPS34", "DPP8",  "MRPL23", "NDUFB11", "EDF1" )
+
+gene_GS910_sc_120 = na.omit(gene_GS910_sc[,top_120_genes])
+
+is.na(gene_GS910_sc_120) %>% table()
+
+dim(gene_GS910_sc_120)
+
+Heatmap(gene_GS910_sc_120, show_row_names = FALSE)
+```
+
+
+```{r}
+common_gene = intersect(top_250_genes, top_60_genes)
+
+common_gene1 = intersect(common_gene, top_120_genes)
+
+common_gene1
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

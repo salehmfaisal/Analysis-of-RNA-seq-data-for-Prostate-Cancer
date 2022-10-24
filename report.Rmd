@@ -1,0 +1,1391 @@
+---
+title: "report"
+author: "Abu Saleh Mosa Faisal"
+date: "6/17/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+
+
+
+
+## For Gleason Score 7
+
+```{r, include=FALSE}
+df_case_7= subset(df_combined, gleason_score == 7 & CaseControl == "Case")
+## Control
+
+df_control= subset(df_combined, CaseControl == "Control")
+
+df_control_gene = df_control[,1:20531]
+
+df_control.new= df_control_gene%>% remove_rownames %>% column_to_rownames(var="sampleID")
+df_controlgene= as.data.frame(t(df_control.new))
+head(df_controlgene)
+
+
+#df_cong_7$Means <-apply(df_cong_7,1,mean)
+
+
+## Case
+
+
+df_case_7gene = df_case_7[,1:20531]
+
+df_case.7= df_case_7gene%>% remove_rownames %>% column_to_rownames(var="sampleID")
+df_cg_7= as.data.frame(t(df_case.7))
+head(df_cg_7)
+
+
+
+
+```
+
+```{r, include=FALSE}
+df_c= cbind(df_cg_7, df_controlgene)
+
+head(df_c)
+```
+
+
+
+
+
+```{r, include=FALSE}
+ttestgene <- function(df, grp1, grp2) {
+  x = df[grp1]
+  y = df[grp2]
+  x = as.numeric(x)
+  y = as.numeric(y)  
+  results = t.test(x, y)
+  results$p.value
+}
+rawpvalue = apply(df_c, 1, ttestgene, grp1 = c(1:247), grp2 = c(248:300))
+```
+
+
+```{r, include=FALSE}
+control1 = apply(df_controlgene, 1, mean)
+test1= apply(df_cg_7, 1, mean) 
+#confirming that we have a vector of numbers
+class(control1) 
+class(test1)
+```
+
+
+```{r, include=FALSE}
+#because our data is already log2 transformed, we can take the difference between the means.  And this is our log2 Fold Change or log2 Ratio == log2(control / test)
+Log2foldchange<- control1 - test1 
+```
+
+
+```{r, echo=FALSE}
+hist(Log2foldchange, xlab = "log2 Fold Change (Control vs Test)")
+```
+
+
+
+
+```{r, include=FALSE}
+
+results = cbind(Log2foldchange, rawpvalue)
+results = as.data.frame(results)
+results$genename <- rownames(results)
+
+library(ggplot2)
+volcano = ggplot(data = results, aes(x = Log2foldchange, y = -1*log10(rawpvalue), label=genename))
+volcano + geom_point() + geom_text(hjust=0, vjust=0) + theme_minimal() + geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+    geom_hline(yintercept=-log10(0.05), col="red")
+  
+```
+
+
+
+
+
+```{r, include=FALSE}
+# add a column of NAs
+results$diffexpressed <- "NO"
+# if log2Foldchange > 0.6 and pvalue < 0.05, set as "UP" 
+results$diffexpressed[results$Log2foldchange > 0.6 & results$rawpvalue < 0.05] <- "UP"
+# if log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
+results$diffexpressed[results$Log2foldchange <   -0.6 & results$rawpvalue < 0.05] <- "DOWN"
+```
+
+
+```{r, include=FALSE}
+# Re-plot but this time color the points with "diffexpressed"
+p <- ggplot(data=results, aes(x=Log2foldchange, y=-log10(rawpvalue), col=diffexpressed)) + geom_point() + theme_minimal()
+
+# Add lines as before...
+p2 <- p + geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+        geom_hline(yintercept=-log10(0.05), col="red")
+
+
+## Change point color 
+
+# 1. by default, it is assigned to the categories in an alphabetical order):
+p3 <- p2 + scale_color_manual(values=c("blue", "black", "red"))
+
+# 2. to automate a bit: ceate a named vector: the values are the colors to be used, the names are the categories they will be assigned to:
+mycolors <- c("blue", "red", "black")
+names(mycolors) <- c("DOWN", "UP", "NO")
+p3 <- p2 + scale_colour_manual(values = mycolors)
+```
+
+```{r, echo=FALSE}
+# Now write down the name of genes beside the points...
+# Create a new column "delabel" to de, that will contain the name of genes differentially expressed (NA in case they are not)
+results$delabel <- NA
+results$delabel[results$diffexpressed != "NO"] <- results$genename[results$diffexpressed != "NO"]
+
+ggplot(data=results, aes(x=Log2foldchange, y=-log10(rawpvalue), col=diffexpressed, label=delabel)) + 
+    geom_point() + 
+    theme_minimal() +
+    geom_text() +
+    geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+    geom_hline(yintercept=-log10(0.05), col="red")
+```
+
+
+
+
+
+
+
+
+
+
+
+```{r, include=FALSE}
+Upregulatedgenes = Log2foldchange[Log2foldchange > 0.6 ]
+Downregulatedgenes = Log2foldchange[Log2foldchange<  -0.6]
+
+Upreg_genes = attr(Upregulatedgenes, "names")
+Downreg_genes= attr(Downregulatedgenes, "names")
+
+
+```
+
+```{r, include=FALSE}
+
+##From result Table
+results
+
+Upreg_7= results[results$Log2foldchange > 0.6 & rawpvalue < 0.05, ]
+Upreg_7
+
+Downreg_7 = results[results$Log2foldchange <= -0.6 & rawpvalue < 0.05, ]
+Downreg_7
+```
+
+
+
+
+
+
+
+```{r, echo=FALSE}
+# Finally, we can organize the labels nicely using the "ggrepel" package and the geom_text_repel() function
+# load library
+library(ggrepel)
+# plot adding up all layers we have seen so far
+ggplot(data=results, aes(x=Log2foldchange, y=-log10(rawpvalue), col=diffexpressed, label=delabel)) +
+        geom_point() + 
+        theme_minimal() +
+        geom_text_repel() +
+        scale_color_manual(values=c("blue", "black", "red")) +
+        geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+        geom_hline(yintercept=-log10(0.05), col="red")
+```
+**Total number of Upregulated genes : 3198**
+**Total number of Downregulated genes : 1585**
+
+
+
+
+#################################################################################
+
+
+
+
+
+## For Gleason Score 8
+
+```{r, include=FALSE}
+df_case_8= subset(df_combined, gleason_score == 8 & CaseControl == "Case")
+
+df_case_8gene = df_case_8[,1:20531]
+
+df_case.8= df_case_8gene%>% remove_rownames %>% column_to_rownames(var="sampleID")
+df_cg_8= as.data.frame(t(df_case.8))
+head(df_cg_8)
+
+```
+
+```{r, include=FALSE}
+df_c8= cbind(df_cg_8, df_controlgene)
+
+head(df_c8)
+```
+
+
+
+```{r, include=FALSE}
+ttestgene <- function(df, grp1, grp2) {
+  x = df[grp1]
+  y = df[grp2]
+  x = as.numeric(x)
+  y = as.numeric(y)  
+  results = t.test(x, y)
+  results$p.value
+}
+Rawpvalue = apply(df_c8, 1, ttestgene, grp1 = c(1:64), grp2 = c(65:117))
+```
+
+
+```{r, include=FALSE}
+control8 = apply(df_controlgene, 1, mean)
+test8= apply(df_cg_8, 1, mean) 
+#confirming that we have a vector of numbers
+class(control8) 
+class(test8)
+```
+
+
+```{r, include=FALSE}
+#because our data is already log2 transformed, we can take the difference between the means.  And this is our log2 Fold Change or log2 Ratio == log2(control / test)
+log2foldchange<- control8 - test8 
+```
+
+
+
+
+
+```{r, echo=FALSE}
+hist(log2foldchange, xlab = "log2 Fold Change (Control vs Case)")
+```
+
+
+
+
+
+
+```{r, include=FALSE}
+
+results = cbind(log2foldchange, Rawpvalue)
+results = as.data.frame(results)
+results$genename <- rownames(results)
+
+library(ggplot2)
+volcano = ggplot(data = results, aes(x = log2foldchange, y = -1*log10(Rawpvalue), label=genename))
+volcano + geom_point() + geom_text(hjust=0, vjust=0) + theme_minimal() + geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+    geom_hline(yintercept=-log10(0.05), col="red")
+  
+```
+
+
+```{r, include=FALSE}
+# add a column of NAs
+results$diffexpressed <- "NO"
+# if log2Foldchange > 0.6 and pvalue < 0.05, set as "UP" 
+results$diffexpressed[results$log2foldchange > 0.6 & results$Rawpvalue < 0.05] <- "UP"
+# if log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
+results$diffexpressed[results$log2foldchange <   -0.6 & results$Rawpvalue < 0.05] <- "DOWN"
+```
+
+
+```{r, include=FALSE}
+# Re-plot but this time color the points with "diffexpressed"
+p <- ggplot(data=results, aes(x=log2foldchange, y=-log10(Rawpvalue), col=diffexpressed)) + geom_point() + theme_minimal()
+
+# Add lines as before...
+p2 <- p + geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+        geom_hline(yintercept=-log10(0.05), col="red")
+
+
+## Change point color 
+
+# 1. by default, it is assigned to the categories in an alphabetical order):
+p3 <- p2 + scale_color_manual(values=c("blue", "black", "red"))
+
+# 2. to automate a bit: ceate a named vector: the values are the colors to be used, the names are the categories they will be assigned to:
+mycolors <- c("blue", "red", "black")
+names(mycolors) <- c("DOWN", "UP", "NO")
+p3 <- p2 + scale_colour_manual(values = mycolors)
+```
+
+```{r, echo=FALSE}
+# Now write down the name of genes beside the points...
+# Create a new column "delabel" to de, that will contain the name of genes differentially expressed (NA in case they are not)
+results$delabel <- NA
+results$delabel[results$diffexpressed != "NO"] <- results$genename[results$diffexpressed != "NO"]
+
+ggplot(data=results, aes(x=log2foldchange, y=-log10(Rawpvalue), col=diffexpressed, label=delabel)) + 
+    geom_point() + 
+    theme_minimal() +
+    geom_text() +
+    geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+    geom_hline(yintercept=-log10(0.05), col="red")
+```
+
+
+
+
+
+
+
+
+
+
+
+```{r, include=FALSE}
+Upregulatedgenes_8 = log2foldchange[log2foldchange > 0.6 ]
+Downregulatedgenes_8 = log2foldchange[log2foldchange<  -0.6]
+
+Upreg_genes_8 = attr(Upregulatedgenes_8, "names")
+Downreg_genes_8= attr(Downregulatedgenes_8, "names")
+
+
+```
+
+```{r}
+
+##From result Table
+results
+
+Upreg_8= results[results$log2foldchange > 0.6 & Rawpvalue < 0.05, ]
+Upreg_8
+
+Downreg_8 = results[results$log2foldchange <= -0.6 & Rawpvalue < 0.05, ]
+Downreg_8
+```
+
+
+
+
+
+
+
+```{r, echo=FALSE}
+# Finally, we can organize the labels nicely using the "ggrepel" package and the geom_text_repel() function
+# load library
+library(ggrepel)
+# plot adding up all layers we have seen so far
+ggplot(data=results, aes(x=log2foldchange, y=-log10(Rawpvalue), col=diffexpressed, label=delabel)) +
+        geom_point() + 
+        theme_minimal() +
+        geom_text_repel() +
+        scale_color_manual(values=c("blue", "black", "red")) +
+        geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+        geom_hline(yintercept=-log10(0.05), col="red")
+```
+
+**Total Number of Upregulated genes : 3351**
+
+**Total Number of Downregulated genes : 1840**
+
+
+
+#################################################################################
+
+
+
+## For Gleason Score 9
+
+```{r, include=FALSE}
+df_case_9 = subset(df_combined, gleason_score == 9 & CaseControl == "Case")
+
+## Case
+
+
+df_case_9gene = df_case_9[,1:20531]
+
+df_case.9= df_case_9gene%>% remove_rownames %>% column_to_rownames(var="sampleID")
+df_cg_9= as.data.frame(t(df_case.9))
+head(df_cg_9)
+
+```
+
+```{r, include=FALSE}
+df_c9 = cbind(df_cg_9, df_controlgene)
+
+head(df_c9)
+```
+
+
+
+```{r, include=FALSE}
+ttestgene <- function(df, grp1, grp2) {
+  x = df[grp1]
+  y = df[grp2]
+  x = as.numeric(x)
+  y = as.numeric(y)  
+  results = t.test(x, y)
+  results$p.value
+}
+Pvalue = apply(df_c9, 1, ttestgene, grp1 = c(1:137), grp2 = c(138:190))
+```
+
+
+```{r, include=FALSE}
+control9 = apply(df_controlgene, 1, mean)
+test9= apply(df_cg_9, 1, mean) 
+#confirming that we have a vector of numbers
+class(control9) 
+class(test9)
+```
+
+
+```{r, include=FALSE}
+#because our data is already log2 transformed, we can take the difference between the means.  And this is our log2 Fold Change or log2 Ratio == log2(control / test)
+Log2FoldChange<- control9 - test9 
+```
+
+
+```{r, echo=FALSE}
+hist(Log2FoldChange, xlab = "log2 Fold Change (Control vs Case)")
+```
+
+
+
+
+
+
+```{r, include=FALSE}
+
+results = cbind(Log2FoldChange, Pvalue)
+results = as.data.frame(results)
+results$genename <- rownames(results)
+
+library(ggplot2)
+volcano = ggplot(data = results, aes(x = Log2FoldChange, y = -1*log10(Pvalue), label=genename))
+volcano + geom_point() + geom_text(hjust=0, vjust=0) + theme_minimal() + geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+    geom_hline(yintercept=-log10(0.05), col="red")
+  
+```
+
+
+```{r, include=FALSE}
+# add a column of NAs
+results$diffexpressed <- "NO"
+# if log2Foldchange > 0.6 and pvalue < 0.05, set as "UP" 
+results$diffexpressed[results$Log2FoldChange > 0.6 & results$Pvalue < 0.05] <- "UP"
+# if log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
+results$diffexpressed[results$Log2FoldChange <   -0.6 & results$Pvalue < 0.05] <- "DOWN"
+```
+
+
+```{r, include=FALSE}
+# Re-plot but this time color the points with "diffexpressed"
+p <- ggplot(data=results, aes(x=Log2FoldChange, y=-log10(Pvalue), col=diffexpressed)) + geom_point() + theme_minimal()
+
+# Add lines as before...
+p2 <- p + geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+        geom_hline(yintercept=-log10(0.05), col="red")
+
+
+## Change point color 
+
+# 1. by default, it is assigned to the categories in an alphabetical order):
+p3 <- p2 + scale_color_manual(values=c("blue", "black", "red"))
+
+# 2. to automate a bit: ceate a named vector: the values are the colors to be used, the names are the categories they will be assigned to:
+mycolors <- c("blue", "red", "black")
+names(mycolors) <- c("DOWN", "UP", "NO")
+p3 <- p2 + scale_colour_manual(values = mycolors)
+```
+
+```{r, echo=FALSE}
+# Now write down the name of genes beside the points...
+# Create a new column "delabel" to de, that will contain the name of genes differentially expressed (NA in case they are not)
+results$delabel <- NA
+results$delabel[results$diffexpressed != "NO"] <- results$genename[results$diffexpressed != "NO"]
+
+ggplot(data=results, aes(x=Log2FoldChange, y=-log10(Pvalue), col=diffexpressed, label=delabel)) + 
+    geom_point() + 
+    theme_minimal() +
+    geom_text() +
+    geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+    geom_hline(yintercept=-log10(0.05), col="red")
+```
+
+
+
+
+
+
+
+
+
+
+
+```{r, include=FALSE}
+Upregulatedgenes_9 = Log2FoldChange[Log2FoldChange > 0.6 ]
+Downregulatedgenes_9 = Log2FoldChange[Log2FoldChange<  -0.6]
+
+Upreg_genes_9 = attr(Upregulatedgenes_9, "names")
+Downreg_genes_9 = attr(Downregulatedgenes_9, "names")
+
+
+```
+
+```{r, include=FALSE}
+
+##From result Table
+results
+
+Upreg_9= results[results$Log2FoldChange > 0.6 & Pvalue < 0.05, ]
+Upreg_9
+
+Downreg_9 = results[results$Log2FoldChange <= -0.6 & Pvalue < 0.05, ]
+Downreg_9
+```
+
+
+
+
+**Another Version**
+
+```{r, echo=FALSE}
+# Finally, we can organize the labels nicely using the "ggrepel" package and the geom_text_repel() function
+# load library
+library(ggrepel)
+# plot adding up all layers we have seen so far
+ggplot(data=results, aes(x=Log2FoldChange, y=-log10(Pvalue), col=diffexpressed, label=delabel)) +
+        geom_point() + 
+        theme_minimal() +
+        geom_text_repel() +
+        scale_color_manual(values=c("blue", "black", "red")) +
+        geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+        geom_hline(yintercept=-log10(0.05), col="red")
+```
+
+**Total number of Upregulated genes : 3279**
+**Total number of Downregulated genes :  1956**
+
+
+
+
+
+
+#####################################################################################
+
+
+## For Gleason Score 10
+
+```{r, include=FALSE}
+df_case_10 = subset(df_combined, gleason_score == 10 & CaseControl == "Case")
+
+## Case
+
+
+df_case_10gene = df_case_10[,1:20531]
+
+df_case.10= df_case_10gene%>% remove_rownames %>% column_to_rownames(var="sampleID")
+df_cg_10= as.data.frame(t(df_case.10))
+head(df_cg_10)
+
+```
+
+```{r, include=FALSE}
+df_c10 = cbind(df_cg_10, df_controlgene)
+
+head(df_c10)
+```
+
+
+
+```{r, include=FALSE}
+ttestgene <- function(df, grp1, grp2) {
+  x = df[grp1]
+  y = df[grp2]
+  x = as.numeric(x)
+  y = as.numeric(y)  
+  results = t.test(x, y)
+  results$p.value
+}
+Pvalue = apply(df_c10, 1, ttestgene, grp1 = c(1:4), grp2 = c(5:57))
+```
+
+
+```{r, include=FALSE}
+control10 = apply(df_controlgene, 1, mean)
+test10= apply(df_cg_10, 1, mean) 
+#confirming that we have a vector of numbers
+class(control10) 
+class(test10)
+```
+
+
+```{r, include=FALSE}
+#because our data is already log2 transformed, we can take the difference between the means.  And this is our log2 Fold Change or log2 Ratio == log2(control / test)
+Log2FoldChange_10<- control10 - test10
+```
+
+
+```{r, echo=FALSE}
+hist(Log2FoldChange_10, xlab = "log2 Fold Change (Control vs Case)")
+```
+
+
+
+
+
+
+```{r, include=FALSE}
+
+results = cbind(Log2FoldChange_10, Pvalue)
+results = as.data.frame(results)
+results$genename <- rownames(results)
+
+library(ggplot2)
+volcano = ggplot(data = results, aes(x = Log2FoldChange_10, y = -1*log10(Pvalue), label=genename))
+volcano + geom_point() + geom_text(hjust=0, vjust=0) + theme_minimal() + geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+    geom_hline(yintercept=-log10(0.05), col="red")
+  
+```
+
+
+```{r, include=FALSE}
+# add a column of NAs
+results$diffexpressed <- "NO"
+# if log2Foldchange > 0.6 and pvalue < 0.05, set as "UP" 
+results$diffexpressed[results$Log2FoldChange_10 > 0.6 & results$Pvalue < 0.05] <- "UP"
+# if log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
+results$diffexpressed[results$Log2FoldChange_10 <   -0.6 & results$Pvalue < 0.05] <- "DOWN"
+```
+
+
+```{r, include=FALSE}
+# Re-plot but this time color the points with "diffexpressed"
+p <- ggplot(data=results, aes(x=Log2FoldChange_10, y=-log10(Pvalue), col=diffexpressed)) + geom_point() + theme_minimal()
+
+# Add lines as before...
+p2 <- p + geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+        geom_hline(yintercept=-log10(0.05), col="red")
+
+
+## Change point color 
+
+# 1. by default, it is assigned to the categories in an alphabetical order):
+p3 <- p2 + scale_color_manual(values=c("blue", "black", "red"))
+
+# 2. to automate a bit: ceate a named vector: the values are the colors to be used, the names are the categories they will be assigned to:
+mycolors <- c("blue", "red", "black")
+names(mycolors) <- c("DOWN", "UP", "NO")
+p3 <- p2 + scale_colour_manual(values = mycolors)
+```
+
+```{r, echo=FALSE}
+# Now write down the name of genes beside the points...
+# Create a new column "delabel" to de, that will contain the name of genes differentially expressed (NA in case they are not)
+results$delabel <- NA
+results$delabel[results$diffexpressed != "NO"] <- results$genename[results$diffexpressed != "NO"]
+
+ggplot(data=results, aes(x=Log2FoldChange_10, y=-log10(Pvalue), col=diffexpressed, label=delabel)) + 
+    geom_point() + 
+    theme_minimal() +
+    geom_text() +
+    geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+    geom_hline(yintercept=-log10(0.05), col="red")
+```
+
+
+
+
+
+
+
+
+
+
+
+```{r, include=FALSE}
+Upregulatedgenes_10 = Log2FoldChange_10[Log2FoldChange_10 > 0.6 ]
+Downregulatedgenes_10 = Log2FoldChange_10[Log2FoldChange_10<  -0.6]
+
+Upreg_genes_10 = attr(Upregulatedgenes_10, "names")
+Downreg_genes_10 = attr(Downregulatedgenes_10, "names")
+
+
+```
+
+```{r, include=FALSE}
+
+##From result Table
+results
+
+Upreg_10= results[results$Log2FoldChange_10 > 0.6 & Pvalue < 0.05, ]
+Upreg_10$delabel
+
+Downreg_10 = results[results$Log2FoldChange_10 <= -0.6 & Pvalue < 0.05, ]
+Downreg_10$delabel
+```
+
+
+
+
+
+
+```{r, echo=FALSE}
+# Finally, we can organize the labels nicely using the "ggrepel" package and the geom_text_repel() function
+# load library
+library(ggrepel)
+# plot adding up all layers we have seen so far
+ggplot(data=results, aes(x=Log2FoldChange_10, y=-log10(Pvalue), col=diffexpressed, label=delabel)) +
+        geom_point() + 
+        theme_minimal() +
+        geom_text_repel() +
+        scale_color_manual(values=c("blue", "black", "red")) +
+        geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+        geom_hline(yintercept=-log10(0.05), col="red")
+```
+
+**Total Upregulated genes : 932**
+**Total Downregulated genes : 539**
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+###Overall differential Expression
+
+
+```{r, include=FALSE}
+genes_7= c(Upreg_7$delabel, Downreg_7$delabel)
+genes_8= c(Upreg_8$delabel, Downreg_8$delabel)
+genes_9= c(Upreg_9$delabel, Downreg_9$delabel)
+genes_10 = c(Upreg_10$delabel, Downreg_10$delabel)
+
+x <- list(GS_7= genes_7, 
+          GS_8= genes_8, 
+          GS_9= genes_9,
+          GS_10 =genes_10)
+```
+
+
+```{r, include=FALSE}
+if (!require(devtools)) install.packages("devtools")
+devtools::install_github("gaospecial/ggVennDiagram")
+```
+
+
+```{r, include=FALSE}
+result= intersect(genes_7, genes_8)
+Common_genes= intersect(result, genes_9)
+Com_genes_1 = intersect(Common_genes, genes_10)
+
+Com_genes_1
+```
+
+```{r, include=FALSE}
+
+print(Com_genes_1)
+```
+
+
+
+
+```{r, include=FALSE}
+write.csv(Com_genes_1, file = "CommonGenes_new.csv")
+
+```
+
+
+
+```{r,include=FALSE}
+
+library("ggVennDiagram")
+# Remove labels background color
+ggVennDiagram(x, label_alpha = 0) + 
+ggplot2::scale_fill_gradient(low="blue",high = "yellow")
+```
+
+### Common Upregulated genes
+
+```{r, include=FALSE}
+genes_7_up= c(Upreg_7$delabel)
+genes_8_up= c(Upreg_8$delabel)
+genes_9_up= c(Upreg_9$delabel)
+genes_10_up = c(Upreg_10$delabel)
+
+x_up <- list(GS_7_up= genes_7_up, 
+          GS_8_up= genes_8_up, 
+          GS_9_up= genes_9_up,
+          GS_10_up =  genes_10_up)
+```
+
+
+
+
+
+```{r, include=FALSE}
+C1= intersect(genes_7_up, genes_8_up)
+C2= intersect(C1, genes_9_up)
+Common_Up = intersect(C2, genes_10_up)
+
+Common_Up
+```
+
+
+
+
+
+```{r, echo=FALSE}
+
+# Remove labels background color
+ggVennDiagram(x_up, label_alpha = 0) + 
+ggplot2::scale_fill_gradient(low="blue",high = "yellow")
+```
+
+
+
+
+### Common Downregulated genes
+
+```{r, include=FALSE}
+genes_7_down= c(Downreg_7$delabel)
+genes_8_down= c(Downreg_8$delabel)
+genes_9_down= c(Downreg_9$delabel)
+genes_10_down = c(Downreg_10$delabel)
+
+x_down <- list(GS_7_down= genes_7_down, 
+          GS_8_down= genes_8_down, 
+          GS_9_down= genes_9_down,
+          GS_10_down =  genes_10_down)
+```
+
+
+
+```{r, include=FALSE}
+c1= intersect(genes_7_down, genes_8_down)
+c2 = intersect(c1, genes_9_down)
+Common_down= intersect(c2, genes_10_down)
+
+
+Common_down
+```
+
+
+
+```{r, echo=FALSE}
+# Remove labels background color
+ggVennDiagram(x_down, label_alpha = 0) + 
+ggplot2::scale_fill_gradient(low="blue",high = "yellow")
+```
+
+
+
+
+
+```{r, include=FALSE}
+Com_genes= list(Common_Up, Common_down)
+```
+
+
+```{r, include=FALSE}
+write.csv(Com_genes, file = "CommonGenes_new.csv")
+
+```
+
+
+
+
+
+`
+
+
+**Venn Diagram of GS7 and GS8**
+
+
+```{r, echo=FALSE}
+
+x1= list(Downreg_7$delabel, Upreg_7$delabel, Downreg_8$delabel, Upreg_8$delabel)
+# Change category names
+# Change the gradient fill color
+ggVennDiagram(
+  x1, label_alpha = 0,
+  category.names = c(" Downreg 7"," Upreg 7", " Downreg 8", " Upreg 8")
+  ) +
+  ggplot2::scale_fill_gradient(low="blue",high = "yellow")
+```
+
+
+```{r, include=FALSE}
+## Finding the gene list who are Upregulated in both GS7 and GS8
+
+CommonUpreg_78= intersect(Upreg_7$delabel, Upreg_8$delabel)
+CommonUpreg_78
+```
+
+
+```{r, include=FALSE}
+## Finding the gene list who are Downregulated in both GS7 and GS8
+
+
+CommonDownreg_78 = intersect(Downreg_7$delabel, Downreg_8$delabel)
+CommonDownreg_78
+
+```
+
+**gene list who are Upregulated in GS7 but Downregulated  in GS8**
+
+```{r, echo=FALSE}
+## Finding the gene list who are Upregulated in GS7 but Downregulated  in GS8
+CommonU7D8= intersect(Upreg_7$delabel, Downreg_8$delabel)
+CommonU7D8
+
+```
+
+**gene list who are Downregulated in GS7 but Upregulated in GS8**
+
+```{r, echo=FALSE}
+## Finding the gene list who are Downregulated in GS7 but Upregulated in GS8
+CommonD7U8 = intersect(Downreg_7$delabel, Upreg_8$delabel)
+CommonD7U8
+
+
+```
+
+
+
+
+**Venn Diagram of GS7 and GS9**
+
+
+```{r, echo=FALSE}
+
+x1= list(Downreg_7$delabel, Upreg_7$delabel, Downreg_9$delabel, Upreg_9$delabel)
+# Change category names
+# Change the gradient fill color
+ggVennDiagram(
+  x1, label_alpha = 0,
+  category.names = c(" Downreg 7"," Upreg 7", " Downreg 9", " Upreg 9")
+  ) +
+  ggplot2::scale_fill_gradient(low="blue",high = "yellow")
+```
+
+
+```{r, include=FALSE}
+## Finding the gene list who are Upregulated in both GS7 and GS9
+CommonUpreg_79= intersect(Upreg_7$delabel, Upreg_9$delabel)
+CommonUpreg_79
+
+## Finding the gene list who are Downregulated in both GS7 and GS9
+CommonDownreg_79 = intersect(Downreg_7$delabel, Downreg_9$delabel)
+CommonDownreg_79
+
+```
+
+**gene list who are Upregulated in GS7 but Downregulated in GS9**
+
+```{r, echo=FALSE}
+## Finding the gene list who are Upregulated in GS7 but Downregulated in GS9
+CommonU7D9= intersect(Upreg_7$delabel, Downreg_9$delabel)
+CommonU7D9
+```
+
+**gene list who are Downregulated in GS7 but Upregulated in GS9**
+
+```{r, echo=FALSE}
+## Finding the gene list who are Downregulated in GS7 but Upregulated in GS9
+CommonD7U9 = intersect(Downreg_7$delabel, Upreg_9$delabel)
+CommonD7U9
+
+
+```
+
+
+**Venn Diagram of GS7 and GS10**
+
+
+```{r, echo=FALSE}
+
+x1= list(Downreg_7$delabel, Upreg_7$delabel, Downreg_10$delabel, Upreg_10$delabel)
+# Change category names
+# Change the gradient fill color
+ggVennDiagram(
+  x1, label_alpha = 0,
+  category.names = c(" Downreg 7"," Upreg 7", " Downreg 10", " Upreg 10")
+  ) +
+  ggplot2::scale_fill_gradient(low="blue",high = "yellow")
+```
+
+
+```{r, include=FALSE}
+## Finding the gene list who are Upregulated in both GS7 and GS10
+CommonUpreg_710= intersect(Upreg_7$delabel, Upreg_10$delabel)
+CommonUpreg_710
+
+## Finding the gene list who are Downregulated in both GS7 and GS10
+CommonDownreg_710 = intersect(Downreg_7$delabel, Downreg_10$delabel)
+CommonDownreg_710
+
+```
+
+**gene list who are Upregulated in GS7 but Downregulated in GS10**
+
+```{r, echo=FALSE}
+## Finding the gene list who are Upregulated in GS7 but Downregulated in GS10
+CommonU7D10= intersect(Upreg_7$delabel, Downreg_10$delabel)
+CommonU7D10
+```
+
+**gene list who are Downregulated in GS7 but Upregulated in GS10**
+
+```{r, echo=FALSE}
+## Finding the gene list who are Downregulated in GS7 but Upregulated in GS10
+CommonD7U10 = intersect(Downreg_7$delabel, Upreg_10$delabel)
+CommonD7U10
+
+
+```
+
+
+
+
+
+
+
+
+
+
+**Venn Diagram of GS8 and GS9**
+
+
+```{r, echo=FALSE}
+
+x1= list(Downreg_8$delabel, Upreg_8$delabel, Downreg_9$delabel, Upreg_9$delabel)
+# Change category names
+# Change the gradient fill color
+ggVennDiagram(
+  x1, label_alpha = 0,
+  category.names = c(" Downreg 8"," Upreg 8", " Downreg 9", " Upreg 9")
+  ) +
+  ggplot2::scale_fill_gradient(low="blue",high = "yellow")
+```
+
+
+```{r, include=FALSE}
+## Finding the gene list who are Upregulated in both GS8 and GS9
+CommonUpreg_89= intersect(Upreg_8$delabel, Upreg_9$delabel)
+CommonUpreg_89
+
+## Finding the gene list who are Upregulated in both GS8 and GS9
+CommonDownreg_89 = intersect(Downreg_8$delabel, Downreg_9$delabel)
+CommonDownreg_89
+
+```
+
+
+**gene list who are Upregulated in GS8 but Downregulated in GS9**
+
+```{r, echo=FALSE}
+## Finding the gene list who are Upregulated in GS8 but Downregulated in GS9
+CommonU8D9= intersect(Upreg_8$delabel, Downreg_9$delabel)
+CommonU8D9
+
+```
+**gene list who are Downregulated in GS8 but Upregulated in GS9**
+
+```{r}
+## Finding the gene list who are Downregulated in GS8 but Upregulated in GS9
+CommonD8U9 = intersect(Downreg_8$delabel, Upreg_9$delabel)
+CommonD8U9
+
+
+```
+
+
+
+
+**Venn Diagram of GS8 and GS10**
+
+
+```{r, echo=FALSE}
+
+x1= list(Downreg_8$delabel, Upreg_8$delabel, Downreg_10$delabel, Upreg_10$delabel)
+# Change category names
+# Change the gradient fill color
+ggVennDiagram(
+  x1, label_alpha = 0,
+  category.names = c(" Downreg 8"," Upreg 8", " Downreg 10", " Upreg 10")
+  ) +
+  ggplot2::scale_fill_gradient(low="blue",high = "yellow")
+```
+
+
+```{r, include=FALSE}
+## Finding the gene list who are Upregulated in both GS8 and GS10
+CommonUpreg_810= intersect(Upreg_8$delabel, Upreg_10$delabel)
+CommonUpreg_810
+
+## Finding the gene list who are Upregulated in both GS8 and GS9
+CommonDownreg_810 = intersect(Downreg_8$delabel, Downreg_10$delabel)
+CommonDownreg_810
+
+```
+
+
+**gene list who are Upregulated in GS8 but Downregulated in GS9**
+
+```{r, echo=FALSE}
+## Finding the gene list who are Upregulated in GS8 but Downregulated in GS9
+CommonU8D10= intersect(Upreg_8$delabel, Downreg_10$delabel)
+CommonU8D10
+
+```
+
+
+
+**gene list who are Downregulated in GS8 but Upregulated in GS9**
+
+```{r, echo=FALSE}
+
+
+## Finding the gene list who are Downregulated in GS8 but Upregulated in GS9
+CommonD8U10 = intersect(Downreg_8$delabel, Upreg_10$delabel)
+CommonD8U10
+
+
+```
+
+
+
+
+**Venn Diagram of GS9 and GS10**
+
+
+```{r, echo=FALSE}
+
+x1= list(Downreg_9$delabel, Upreg_9$delabel, Downreg_10$delabel, Upreg_10$delabel)
+# Change category names
+# Change the gradient fill color
+ggVennDiagram(
+  x1, label_alpha = 0,
+  category.names = c(" Downreg 9"," Upreg 9", " Downreg 10", " Upreg 10")
+  ) +
+  ggplot2::scale_fill_gradient(low="blue",high = "yellow")
+```
+
+
+
+```{r, include=FALSE}
+## Finding the gene list who are Upregulated in both GS9 and GS10
+CommonUpreg_910= intersect(Upreg_9$delabel, Upreg_10$delabel)
+CommonUpreg_910
+
+## Finding the gene list who are Upregulated in both GS9 and GS9
+CommonDownreg_910 = intersect(Downreg_9$delabel, Downreg_10$delabel)
+CommonDownreg_910
+
+```
+
+**gene list who are Upregulated in GS9 but Downregulated in GS10**
+
+```{r,echo=FALSE}
+## Finding the gene list who are Upregulated in GS9 but Downregulated in GS10
+CommonU9D10= intersect(Upreg_9$delabel, Downreg_10$delabel)
+CommonU9D10
+
+```
+
+**gene list who are Downregulated in GS9 but Upregulated in GS10**
+
+```{r, echo=FALSE}
+## Finding the gene list who are Downregulated in GS9 but Upregulated in GS10
+CommonD9U10 = intersect(Downreg_9$delabel, Upreg_10$delabel)
+CommonD9U10
+
+
+```
+
+
+
+
+
+
+
+
+
+```{r, include=FALSE}
+
+x1= list(Downreg_7$delabel, Upreg_7$delabel, Downreg_8$delabel, Upreg_8$delabel, Downreg_9$delabel, Upreg_9$delabel, Downreg_10$delabel, Upreg_10$delabel)
+# Change category names
+# Change the gradient fill color
+plotVenn(x1)
+```
+
+
+
+
+
+
+```{r, include=FALSE}
+
+##New data with differentially expressed genes
+
+Common_genes_new = c(Common_Up, Common_down)
+```
+
+
+
+```{r, include=FALSE}
+
+
+##New dataset with selected genes
+myvar= c("sampleID", Common_genes_new)
+dat= data2[,myvar] 
+dat
+```
+
+
+
+
+
+```{r, include=FALSE}
+##Control
+
+df_controlgene
+df_cont=as.data.frame(t(df_controlgene))
+
+dat_control= df_cont
+dat_control= tibble::rownames_to_column(dat_control, "sampleID")
+dat_control$sampleID = as.character(dat_control$sampleID)
+
+dat_control
+
+dat_conTl= dat_control[,myvar]
+
+dat_conTl
+
+
+
+
+
+```
+
+
+```{r, include=FALSE}
+dat_con= dat_conTl%>% remove_rownames %>% column_to_rownames(var="sampleID")
+
+dat_con
+```
+
+
+
+
+
+
+```{r, include=FALSE}
+## Joining the tables by sampleID
+
+dat_combined= dat %>%  inner_join(df_clinical, by = "sampleID") %>%
+                        inner_join(df_survival, by ="sampleID")
+
+
+dim(dat_combined)
+dat_combined
+
+```
+
+
+
+```{r, include=FALSE}
+## Dividing by case and control of data
+dat_combined <- dat_combined %>%
+  add_column(CaseControl = 
+               if_else(.$sample_type == "Primary Tumor", "Case", "Control"),
+             .after="RGS10")
+
+
+
+```
+
+
+
+
+```{r, include=FALSE}
+write.csv(dat_combined, file = "combined_data.csv")
+
+```
+
+
+
+
+```{r, include=FALSE}
+##Genes extracted from Random forest and Ridge Regression Model.
+
+genes_RR= c('DLX2', 'F2RL2', 'ITGAX', 'KCNG3', 'LHX6', 'LOC100128842', 'RAB17', 'RPS26')
+```
+
+**Common Up Regulated genes of this method, Random forest and Ridge Regression Model**
+
+
+```{r, echo=FALSE}
+intersect(Common_Up, genes_RR)
+```
+
+**Common Down Regulated genes of this method, Random forest and Ridge Regression Model**
+
+```{r, echo=FALSE}
+intersect(Common_down, genes_RR)
+```
+
+```{r, include=FALSE}
+genes_RF = c('HFE', 'MARCKSL1', 'DLX2', 'RHBDL3', 'LY6D', 'DLX1', 'RPS26', 'SIM2',
+       'KRT5', 'ZNF488', 'LRRC56', 'KANK4', 'ASPH', 'ZDHHC15', 'CDK5R1',
+       'ATP1B1', 'RAB17', 'EZH2', 'ITGAX', 'SEMA6D', 'METTL7A', 'FZD8',
+       'SEMG1', 'CALML3', 'TSPAN13', 'LRFN1', 'KCNG3', 'CPNE6', 'F2RL2',
+       'C13orf38', 'LHX6', 'CIDEC', 'C2orf88', 'CRYZ', 'PPARGC1A', 'DLGAP5',
+       'NCAPG', 'RPE65', 'FABP7', 'PCDHA1', 'ABHD6', 'BMP7', 'BEX1', 'CXCR2',
+       'CDC20', 'LOC100128842', 'MORC1', 'FAM72B', 'KCNF1')
+```
+
+
+**Common Up Regulated genes of this method, Random forest Model**
+
+
+```{r, echo=FALSE}
+intersect(Common_Up, genes_RF)
+```
+
+**Common Down Regulated genes of this method, Random forest Model**
+
+```{r, echo=FALSE}
+intersect(Common_down, genes_RF)
+```
+
+
+
+
+
+
+
+
+
+
+
+
